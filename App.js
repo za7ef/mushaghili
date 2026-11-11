@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert, StatusBar,
-  KeyboardAvoidingView, Platform, Animated, Modal, LayoutAnimation, UIManager,
+  KeyboardAvoidingView, Platform, Animated, Modal, LayoutAnimation, UIManager, Linking, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -13,7 +13,7 @@ import { BlurView } from 'expo-blur';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { decodeSubBytes, parseSubs, readBytes } from './subs';
+import { decodeSubBytes, parseSubs, readBytes, guessQuery, searchSubs, downloadSub, cleanCues } from './subs';
 
 if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
 
@@ -22,6 +22,7 @@ const NTFY = 'ntfy.sh';
 const TOPIC_PREFIX = 'mhvp-room-';
 const MY_ID = Math.random().toString(36).slice(2, 10);
 const ACCENT = '#0A84FF';
+const APP_VERSION = '1.1.0';
 const C = {
   bg: '#000', card: 'rgba(255,255,255,0.06)', stroke: 'rgba(255,255,255,0.09)',
   text: '#F5F5F7', sub: '#98989F', dim: '#636366', green: '#30D158', red: '#FF453A', yellow: '#FFD60A',
@@ -133,6 +134,7 @@ function PlayerSurface({ player, viewRef, isPlaying, currentTime, title, cue, su
         allowsPictureInPicture
         startsPictureInPictureAutomatically
         contentFit="contain"
+        allowsVideoFrameAnalysis={false}
       />
       {cue && (
         <View pointerEvents="none" style={[styles.subWrap, { bottom: visible && !nativeMode ? (full ? 92 : 64) : (full ? 36 : 14) }]}>
@@ -199,11 +201,18 @@ function Main() {
 
   const switchTab = (k) => { tap(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setTab(k); };
 
+  const [layoutKey, setLayoutKey] = useState(0);
+  const [about, setAbout] = useState(false);
   const toggleFull = async () => {
-    try {
-      if (!full) { setFull(true); await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE); }
-      else { await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP); setFull(false); }
-    } catch { setFull((f) => !f); }
+    if (!full) {
+      setFull(true);
+      try { await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE); } catch {}
+    } else {
+      try { await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP); } catch {}
+      setFull(false);
+      // re-measure everything after rotating back
+      setTimeout(() => setLayoutKey((k) => k + 1), 350);
+    }
   };
 
   /* subtitles: local per user, never synced */
@@ -224,6 +233,56 @@ function Main() {
   const pickSub = async () => {
     const r = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
     if (!r.canceled && r.assets?.length) loadSubs(r.assets[0].uri, r.assets[0].name || 'ترجمة');
+  };
+  const [subQuery, setSubQuery] = useState('');
+  const [subResults, setSubResults] = useState([]);
+  const [subBusy, setSubBusy] = useState(false);
+  const [subMsg, setSubMsg] = useState('');
+  const [embedded, setEmbedded] = useState(null);
+
+  useEffect(() => { setSubQuery(guessQuery(source.name).query); setSubResults([]); setSubMsg(''); setEmbedded(null); }, [source.uri]);
+
+  const loadFromResult = async (r) => {
+    setSubBusy(true);
+    try {
+      const c = cleanCues(parseSubs(decodeSubBytes(await downloadSub(r.link))));
+      if (!c.length) throw new Error('الملف فاضي');
+      setCues(c); setSubName(r.file); setSubsOn(true); setSubOffset(0);
+      try { player.subtitleTrack = null; } catch {}
+      setEmbedded(null);
+      setSubMsg('تمام، حمّلت: ' + r.file);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e) { setSubMsg('ما قدرت أحمّلها: ' + String(e?.message || e)); }
+    setSubBusy(false);
+  };
+
+  const autoSubs = async () => {
+    setSubBusy(true); setSubMsg(''); setSubResults([]);
+    // 1) embedded tracks inside the video
+    try {
+      const tracks = player.availableSubtitleTracks || [];
+      const ar = tracks.find((t) => /^ar/i.test(t.language || '') || /arab|عرب/i.test(t.label || ''));
+      if (ar) {
+        player.subtitleTrack = ar;
+        setEmbedded(ar.label || 'عربي');
+        setCues([]); setSubName('');
+        setSubMsg('لقيت ترجمة عربية داخل الفيديو وشغّلتها');
+        setSubBusy(false);
+        return;
+      }
+    } catch {}
+    // 2) online search
+    const g = guessQuery(subQuery || source.name);
+    const q = { ...g, query: (subQuery || g.query).trim() };
+    if (!q.query) { setSubMsg('اكتب اسم الفيلم أو المسلسل'); setSubBusy(false); return; }
+    try {
+      let res = await searchSubs(q, 'ara');
+      if (!res.length && (q.season || q.episode)) res = await searchSubs({ query: q.query }, 'ara');
+      if (!res.length) { setSubMsg('ما لقيت ترجمة عربية. جرّب تكتب الاسم بالإنجليزي، ومعه S01E01 لو مسلسل'); setSubBusy(false); return; }
+      setSubResults(res.slice(0, 10));
+      setSubBusy(false);
+      await loadFromResult(res[0]);
+    } catch (e) { setSubMsg('البحث ما ضبط: ' + String(e?.message || e)); setSubBusy(false); }
   };
   const st = currentTime - subOffset;
   const cue = subsOn ? cues.find((c) => st >= c.start && st <= c.end) : null;
@@ -347,21 +406,18 @@ function Main() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar barStyle="light-content" hidden={full} />
       <LinearGradient colors={['#0B1A33', '#000', '#000']} style={StyleSheet.absoluteFill} />
-      <Modal visible={full} animationType="fade" supportedOrientations={['landscape', 'portrait']} onRequestClose={toggleFull}>
-        <View style={{ flex: 1, backgroundColor: '#000' }}>{full && surface}</View>
-      </Modal>
 
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         <View style={styles.header}>
           <View style={styles.headerBadge}><Ionicons name="film" size={16} color="#fff" /></View>
           <Text style={styles.headerTitle}>مشغّلي</Text>
           <View style={{ flex: 1 }} />
-          <Text style={styles.glassTag}>{LIQUID ? 'Liquid Glass' : 'Blur'}</Text>
+          <IconBtn name="information-circle-outline" size={26} color={C.sub} onPress={() => setAbout(true)} />
         </View>
-        <View style={styles.playerCard}>{!full && surface}</View>
+        <View style={styles.playerCard}>{!full ? surface : <View style={styles.surface} />}</View>
 
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView key={layoutKey} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {tab === 'player' && (
               <>
                 <Card title="شغّل من رابط" icon="link">
@@ -377,6 +433,27 @@ function Main() {
 
             {tab === 'subs' && (
               <>
+                <Card title="جيب الترجمة تلقائي" icon="sparkles">
+                  <Field value={subQuery} onChangeText={setSubQuery} placeholder="Movie name / Show S01E01" onSubmitEditing={autoSubs} returnKeyType="search" />
+                  <Btn title={subBusy ? 'يدوّر…' : 'جيب الترجمة تلقائي'} icon="sparkles" onPress={subBusy ? undefined : autoSubs} />
+                  {subBusy && <ActivityIndicator color={ACCENT} style={{ marginVertical: 6 }} />}
+                  {!!subMsg && <Hint color={embedded || cues.length ? C.green : C.sub}>{subMsg}</Hint>}
+                  {subResults.length > 1 && (
+                    <View style={{ marginTop: 4 }}>
+                      <Text style={styles.listHead}>ترجمات ثانية لو هذي ما ضبطت</Text>
+                      {subResults.map((r) => (
+                        <Pressable key={r.id} onPress={() => { tap(); loadFromResult(r); }} style={({ pressed }) => [styles.resRow, pressed && { opacity: 0.6 }]}>
+                          <Ionicons name={subName === r.file ? 'checkmark-circle' : 'document-text-outline'} size={18} color={subName === r.file ? C.green : C.sub} />
+                          <View style={{ flex: 1, marginRight: 10 }}>
+                            <Text style={styles.resFile} numberOfLines={1}>{r.file}</Text>
+                            <Text style={styles.resMeta}>{r.title}{r.season && r.season !== '0' ? ` · S${r.season}E${r.episode}` : ''} · {r.downloads.toLocaleString('en')} تحميل</Text>
+                          </View>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  <Hint>يدوّر أول داخل الفيديو نفسه، وبعدين في OpenSubtitles بالعربي. الاسم ينأخذ من اسم الملف، وعدّله لو مو صح.</Hint>
+                </Card>
                 <Card title="ملف الترجمة" icon="text">
                   <View style={styles.statusRow}>
                     <Ionicons name={cues.length ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={cues.length ? C.green : C.dim} />
@@ -406,7 +483,6 @@ function Main() {
                   </Card>
                 )}
                 <Hint>الترجمة تطلع في المشغل وفي الشاشة الكاملة حقت التطبيق، بس ما تطلع على التلفزيون ولا في صورة داخل صورة. وفي "سوا" كل واحد ترجمته عنده.</Hint>
-                <Hint>البحث عن ترجمة من داخل التطبيق مو متاح، لأن مواقع الترجمة تطلب حساب ومفتاح API. نزّل الملف من subdl.com أو opensubtitles.org وافتحه من الملفات.</Hint>
               </>
             )}
 
@@ -460,8 +536,6 @@ function Main() {
 
             {tab === 'screen' && (
               <Card title="بث شاشة الجوال" icon="phone-portrait">
-                <P>بث الشاشة ما يشتغل داخل Expo Go. يحتاج إضافة بث من iOS (ReplayKit) تنبني كملف IPA وتنثبّت بـ SideStore.</P>
-                <P style={{ color: C.sub }}>البدائل الحين:</P>
                 <Step n="•" t="للتلفزيون: مركز التحكم ← انعكاس الشاشة." />
                 <Step n="•" t="لشخص بعيد: مكالمة FaceTime ← مشاركة الشاشة." />
               </Card>
@@ -483,7 +557,47 @@ function Main() {
           </Glass>
         </View>
       </SafeAreaView>
+      {full && <View style={styles.fullLayer}>{surface}</View>}
+      <AboutSheet visible={about} onClose={() => setAbout(false)} />
     </View>
+  );
+}
+
+function AboutSheet({ visible, onClose }) {
+  const feats = [
+    ['play-circle', 'تشغيل من رابط أو من ملفات جوالك'],
+    ['text', 'ترجمة عربية تلقائية أو من ملف'],
+    ['people', 'تتفرج مع ربعك عن بعد بكود غرفة'],
+    ['tv', 'تعرض على التلفزيون بـ AirPlay'],
+    ['albums', 'صورة داخل صورة وشاشة كاملة'],
+  ];
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={styles.aboutWrap}>
+        <View style={styles.aboutTop}>
+          <IconBtn name="close" size={24} color={C.sub} onPress={onClose} />
+        </View>
+        <View style={styles.aboutIcon}><Ionicons name="film" size={44} color="#fff" /></View>
+        <Text style={styles.aboutName}>مشغّلي</Text>
+        <Text style={styles.aboutVer}>الإصدار {APP_VERSION}</Text>
+        <Text style={[styles.p, { textAlign: 'center', color: C.sub, marginVertical: 14 }]}>
+          مشغّل فيديو للآيفون بتصميم Liquid Glass، يشغّل أي فيديو ويجيب له ترجمة عربية، وتقدر تتفرج فيه مع ربعك.
+        </Text>
+        <View style={[styles.card, { backgroundColor: C.card }]}>
+          {feats.map(([ic, t]) => (
+            <View key={t} style={styles.featRow}>
+              <Ionicons name={ic} size={18} color={ACCENT} />
+              <Text style={[styles.p, { flex: 1, marginBottom: 0, marginRight: 10 }]}>{t}</Text>
+            </View>
+          ))}
+        </View>
+        <Pressable onPress={() => Linking.openURL('https://github.com/za7ef')} style={({ pressed }) => [styles.devRow, pressed && { opacity: 0.6 }]}>
+          <Ionicons name="logo-github" size={20} color={C.text} />
+          <Text style={styles.devTxt}>المطوّر: za7ef</Text>
+          <Ionicons name="open-outline" size={16} color={ACCENT} />
+        </Pressable>
+      </View>
+    </Modal>
   );
 }
 
@@ -544,6 +658,19 @@ const styles = StyleSheet.create({
   trackFill: { height: 4, backgroundColor: '#fff' },
   knob: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', marginLeft: -6, top: 8 },
   body: { padding: 14, paddingTop: 16, paddingBottom: 130 },
+  fullLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 50 },
+  listHead: { color: C.sub, fontSize: 12, fontWeight: '600', marginBottom: 4, textAlign: 'right' },
+  resRow: { flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.stroke },
+  resFile: { color: C.text, fontSize: 13, textAlign: 'left', writingDirection: 'ltr' },
+  resMeta: { color: C.dim, fontSize: 11, marginTop: 2, textAlign: 'right' },
+  aboutWrap: { flex: 1, backgroundColor: '#0d0d10', padding: 20, alignItems: 'stretch' },
+  aboutTop: { flexDirection: 'row', justifyContent: 'flex-start' },
+  aboutIcon: { alignSelf: 'center', width: 88, height: 88, borderRadius: 22, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  aboutName: { color: C.text, fontSize: 28, fontWeight: '800', textAlign: 'center', marginTop: 14 },
+  aboutVer: { color: C.dim, fontSize: 13, textAlign: 'center', marginTop: 4 },
+  featRow: { flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 8 },
+  devRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginTop: 6 },
+  devTxt: { color: C.text, fontSize: 15, fontWeight: '600' },
   glassTag: { color: C.dim, fontSize: 11, fontWeight: '600' },
   card: { backgroundColor: LIQUID ? 'transparent' : C.card, borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.stroke },
   cardHead: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 12 },

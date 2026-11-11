@@ -28,7 +28,7 @@ const NTFY = 'ntfy.sh';
 const TOPIC_PREFIX = 'mhvp-room-';
 const MY_ID = Math.random().toString(36).slice(2, 10);
 const ACCENT = '#0A84FF';
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.3.2';
 const C = {
   bg: '#000', card: 'rgba(255,255,255,0.06)', stroke: 'rgba(255,255,255,0.09)',
   text: '#F5F5F7', sub: '#98989F', dim: '#636366', green: '#30D158', red: '#FF453A', yellow: '#FFD60A',

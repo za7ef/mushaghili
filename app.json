@@ -2,17 +2,29 @@
   "expo": {
     "name": "مشغّلي",
     "slug": "mushaghili",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "com.mohammed.mushaghili",
       "supportsTablet": true,
-      "infoPlist": { "UIBackgroundModes": ["audio"] }
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
+      "icon": "./assets/icon.png"
     },
     "plugins": [
-      ["expo-video", { "supportsBackgroundPlayback": true, "supportsPictureInPicture": true }],
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ],
       "expo-screen-orientation"
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }

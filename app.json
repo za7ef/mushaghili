@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "مشغّلي",
+    "slug": "mushaghili",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.mohammed.mushaghili",
+      "supportsTablet": true,
+      "infoPlist": { "UIBackgroundModes": ["audio"] }
+    },
+    "plugins": [
+      ["expo-video", { "supportsBackgroundPlayback": true, "supportsPictureInPicture": true }],
+      "expo-screen-orientation"
+    ]
+  }
+}

@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Version
+        run: echo "VER=$(node -p "require('./app.json').expo.version")" >> $GITHUB_ENV
 
       - uses: actions/setup-node@v4
         with:
@@ -37,9 +39,9 @@ jobs:
         run: |
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n1)
           mkdir -p Payload && cp -R "$APP" Payload/
-          zip -qry mushaghili.ipa Payload
+          zip -qry "Mushaghili-${VER}.ipa" Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mushaghili-ipa
-          path: mushaghili.ipa
+          name: mushaghili-${{ env.VER }}-ipa
+          path: Mushaghili-${{ env.VER }}.ipa

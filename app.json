@@ -2,7 +2,7 @@
   "expo": {
     "name": "مشغّلي",
     "slug": "mushaghili",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "ios": {
@@ -16,6 +16,7 @@
       "icon": "./assets/icon.png"
     },
     "plugins": [
+      "expo-router",
       [
         "expo-video",
         {
@@ -25,6 +26,7 @@
       ],
       "expo-screen-orientation"
     ],
-    "icon": "./assets/icon.png"
+    "icon": "./assets/icon.png",
+    "scheme": "mushaghili"
   }
 }

@@ -1,4 +1,10 @@
-# مشغّلي 🎬
+# مشغّلي · Mushaghili
+
+**مشغّل فيديو للآيفون بتصميم Liquid Glass** · *A Liquid Glass video player for iPhone*
+
+![iOS](https://img.shields.io/badge/iOS-26%2B-000?logo=apple) ![Expo](https://img.shields.io/badge/Expo-SDK_58-000020?logo=expo) ![Version](https://img.shields.io/github/v/release/za7ef/mushaghili) ![Languages](https://img.shields.io/badge/languages-15-0A84FF)
+
+[⬇️ تحميل آخر إصدار · Download latest](https://github.com/za7ef/mushaghili/releases/latest) · [📝 سجل التغييرات · Changelog](CHANGELOG.md)
 
 مشغّل فيديو للآيفون مسوّى بـ Expo (React Native)، بتصميم داكن و Liquid Glass.
 

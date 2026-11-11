@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useContext, createCont
 import { useFocusEffect } from 'expo-router';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert, StatusBar,
-  KeyboardAvoidingView, Platform, Animated, Modal, LayoutAnimation, UIManager, Linking, ActivityIndicator,
+  KeyboardAvoidingView, Platform, Animated, Modal, PanResponder, LayoutAnimation, UIManager, Linking, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -111,7 +111,43 @@ function PlayerSurface({ player, viewRef, isPlaying, currentTime, title, cue, su
   const hideTimer = useRef(null);
   const [barW, setBarW] = useState(1);
   const duration = player.duration || 0;
-  const progress = duration ? Math.min(1, currentTime / duration) : 0;
+  const [drag, setDrag] = useState(null); // fraction while scrubbing
+  const dragRef = useRef({ startX: 0, w: 1, lastSeek: 0, lastTick: -1 });
+  const durRef = useRef(duration); durRef.current = duration;
+  const wRef = useRef(1); wRef.current = barW;
+  const progress = drag != null ? drag : duration ? Math.min(1, currentTime / duration) : 0;
+  const shownTime = drag != null ? drag * duration : currentTime;
+  const knobScale = useRef(new Animated.Value(1)).current;
+  const clamp = (x) => Math.max(0, Math.min(1, x));
+  const pan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: (e) => {
+      clearTimeout(hideTimer.current);
+      const f = clamp(e.nativeEvent.locationX / wRef.current);
+      dragRef.current = { startX: e.nativeEvent.locationX, lastSeek: 0, lastTick: Math.floor(f * 20) };
+      setDrag(f);
+      Animated.spring(knobScale, { toValue: 1.8, useNativeDriver: true, speed: 30 }).start();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    },
+    onPanResponderMove: (_, g) => {
+      const f = clamp((dragRef.current.startX + g.dx) / wRef.current);
+      setDrag(f);
+      const tick = Math.floor(f * 20);
+      if (tick !== dragRef.current.lastTick) { dragRef.current.lastTick = tick; Haptics.selectionAsync().catch(() => {}); }
+      const now = Date.now();
+      if (durRef.current && now - dragRef.current.lastSeek > 250) { dragRef.current.lastSeek = now; player.currentTime = f * durRef.current; }
+    },
+    onPanResponderRelease: (_, g) => {
+      const f = clamp((dragRef.current.startX + g.dx) / wRef.current);
+      if (durRef.current) player.currentTime = f * durRef.current;
+      Animated.spring(knobScale, { toValue: 1, useNativeDriver: true, speed: 30 }).start();
+      setTimeout(() => setDrag(null), 300);
+      armRef.current?.();
+    },
+    onPanResponderTerminate: () => { setDrag(null); Animated.spring(knobScale, { toValue: 1, useNativeDriver: true }).start(); },
+  })).current;
 
   const show = useCallback((v) => {
     setVisible(v);
@@ -124,6 +160,7 @@ function PlayerSurface({ player, viewRef, isPlaying, currentTime, title, cue, su
   useEffect(() => { if (isPlaying) arm(); else { clearTimeout(hideTimer.current); show(true); } }, [isPlaying]);
   useEffect(() => () => clearTimeout(hideTimer.current), []);
 
+  const armRef = useRef(null); armRef.current = arm;
   const onSurface = () => { if (visible) show(false); else { show(true); arm(); } };
   const act = (fn) => () => { fn(); arm(); };
 
@@ -167,15 +204,19 @@ function PlayerSurface({ player, viewRef, isPlaying, currentTime, title, cue, su
               <IconBtn name="play-forward" size={26} style={styles.roundSm} onPress={act(() => player.seekBy(10))} />
             </View>
             <View style={[styles.bottomBar, full && { paddingHorizontal: 40, paddingBottom: 26 }]}>
-              <Text style={styles.time}>{fmt(currentTime)}</Text>
-              <Pressable style={styles.trackHit} onLayout={(e) => setBarW(e.nativeEvent.layout.width)}
-                onPress={(e) => { if (duration) { player.currentTime = (e.nativeEvent.locationX / barW) * duration; arm(); } }}>
-                <View style={styles.track}>
-                  <View style={[styles.trackFill, { width: `${progress * 100}%` }]} />
+              <Text style={styles.time}>{fmt(shownTime)}</Text>
+              <View style={styles.trackHit} onLayout={(e) => setBarW(e.nativeEvent.layout.width)} {...pan.panHandlers}>
+                <View pointerEvents="none" style={[styles.track, drag != null && { height: 7, borderRadius: 4 }]}>
+                  <View style={[styles.trackFill, { width: `${progress * 100}%` }, drag != null && { height: 7 }]} />
                 </View>
-                <View style={[styles.knob, { left: `${progress * 100}%` }]} />
-              </Pressable>
-              <Text style={styles.time}>-{fmt(Math.max(0, duration - currentTime))}</Text>
+                <Animated.View pointerEvents="none" style={[styles.knob, { left: `${progress * 100}%`, transform: [{ scale: knobScale }] }]} />
+                {drag != null && (
+                  <View pointerEvents="none" style={[styles.bubble, { left: Math.max(0, Math.min(barW - 64, progress * barW - 32)) }]}>
+                    <Text style={styles.bubbleTxt}>{fmt(shownTime)}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.time}>-{fmt(Math.max(0, duration - shownTime))}</Text>
             </View>
           </Animated.View>
         </>
@@ -298,6 +339,7 @@ export function PlayerProvider({ children }) {
   const [log, setLog] = useState([]);
   const wsRef = useRef(null);
   const applyingRemote = useRef(false);
+  const seekSendTimer = useRef(null);
   const lastTime = useRef({ t: 0, at: Date.now() });
   const sourceRef = useRef(source);
   sourceRef.current = source;
@@ -369,7 +411,10 @@ export function PlayerProvider({ children }) {
     const prev = lastTime.current;
     const expected = prev.t + (isPlaying ? (Date.now() - prev.at) / 1000 : 0);
     lastTime.current = { t: currentTime, at: Date.now() };
-    if (room && !applyingRemote.current && Math.abs(currentTime - expected) > 2.5) sendState('auto');
+    if (room && !applyingRemote.current && Math.abs(currentTime - expected) > 2.5) {
+      clearTimeout(seekSendTimer.current);
+      seekSendTimer.current = setTimeout(() => sendState('auto'), 600); // debounce scrubbing
+    }
   }, [currentTime]);
 
   const createRoom = () => { setPeers({}); setLog([]); setRoom(newRoomCode()); };
@@ -647,10 +692,12 @@ const styles = StyleSheet.create({
   fillCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', direction: 'ltr', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, gap: 10 },
   time: { color: '#fff', fontSize: 12, fontVariant: ['tabular-nums'], fontWeight: '600', minWidth: 40, textAlign: 'center' },
-  trackHit: { flex: 1, height: 28, justifyContent: 'center' },
+  trackHit: { flex: 1, height: 36, justifyContent: 'center' },
+  bubble: { position: 'absolute', bottom: 34, width: 64, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(30,30,32,0.92)', alignItems: 'center' },
+  bubbleTxt: { color: '#fff', fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
   track: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' },
   trackFill: { height: 4, backgroundColor: '#fff' },
-  knob: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', marginLeft: -6, top: 8 },
+  knob: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', marginLeft: -6, top: 12 },
   body: { padding: 14, paddingTop: 16, paddingBottom: 40 },
   fullLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 50 },
   listHead: { color: C.sub, fontSize: 12, fontWeight: '600', marginBottom: 4, textAlign: 'right' },

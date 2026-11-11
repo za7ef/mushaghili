@@ -1938,5 +1938,6 @@ export const isRTL = () => RTL_LANGS.includes(current);
 export function t(key, vars) {
   let s = (STRINGS[current] && STRINGS[current][key]) ?? STRINGS.en[key] ?? key;
   if (vars) for (const k in vars) s = s.replace(`{${k}}`, vars[k]);
-  return s;
+  // RLM keeps trailing punctuation on the correct side when text mixes Latin
+  return RTL_LANGS.includes(current) ? '\u200F' + s + '\u200F' : s;
 }

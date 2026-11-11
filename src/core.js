@@ -28,7 +28,7 @@ const NTFY = 'ntfy.sh';
 const TOPIC_PREFIX = 'mhvp-room-';
 const MY_ID = Math.random().toString(36).slice(2, 10);
 const ACCENT = '#0A84FF';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const C = {
   bg: '#000', card: 'rgba(255,255,255,0.06)', stroke: 'rgba(255,255,255,0.09)',
   text: '#F5F5F7', sub: '#98989F', dim: '#636366', green: '#30D158', red: '#FF453A', yellow: '#FFD60A',
@@ -133,7 +133,9 @@ function PlayerSurface({ player, viewRef, isPlaying, currentTime, title, cue, su
   const fade = useRef(new Animated.Value(1)).current;
   const hideTimer = useRef(null);
   const [barW, setBarW] = useState(1);
-  const duration = player.duration || 0;
+  const status = useEvent(player, 'statusChange', { status: player.status });
+  const srcEv = useEvent(player, 'sourceLoad', null);
+  const duration = srcEv?.duration || player.duration || 0;
   const [drag, setDrag] = useState(null); // fraction while scrubbing
   const dragRef = useRef({ startX: 0, w: 1, lastSeek: 0, lastTick: -1 });
   const durRef = useRef(duration); durRef.current = duration;
@@ -813,8 +815,7 @@ function Chips({ options, value, onChange, wrap }) {
       </Pressable>
     );
   });
-  if (wrap) return <View style={styles.chipWrap}>{inner}</View>;
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>{inner}</ScrollView>;
+  return <View style={styles.chipWrap}>{inner}</View>;
 }
 function SSection({ title, children }) {
   return (
@@ -967,7 +968,7 @@ function SettingsSheet({ visible, onClose, cfg, setOpt, onClear, onAbout }) {
 let styles;
 let D = {};
 export function applyDir(rtlOn) {
-  const R = rtlOn ? R : 'row';
+  const R = rtlOn ? 'row-reverse' : 'row';
   const TA = rtlOn ? 'right' : 'left';
   const WD = rtlOn ? 'rtl' : 'ltr';
   const IM = rtlOn ? 'marginLeft' : 'marginRight';
@@ -1006,7 +1007,7 @@ function makeStyles(R, TA, WD, IM, TXT) { return StyleSheet.create({
   track: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' },
   trackFill: { height: 4, backgroundColor: '#fff' },
   knob: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', marginLeft: -6, top: 12 },
-  body: { padding: 14, paddingTop: 16, paddingBottom: 40 },
+  body: { padding: 14, paddingTop: 16, paddingBottom: 140 },
   fullLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 50 },
   listHead: { color: C.sub, fontSize: 12, fontWeight: '600', marginBottom: 4, textAlign: TA },
   resRow: { flexDirection: R, alignItems: 'center', paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.stroke },

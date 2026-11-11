@@ -153,13 +153,13 @@ function PlayerSurface({ player, viewRef, isPlaying, currentTime, title, cue, su
               <Text numberOfLines={1} style={styles.topTitle}>{title}</Text>
             </View>
             <View style={styles.center} pointerEvents="box-none">
-              <IconBtn name="play-forward" size={26} style={styles.roundSm} onPress={act(() => player.seekBy(10))} />
+              <IconBtn name="play-back" size={26} style={styles.roundSm} onPress={act(() => player.seekBy(-10))} />
               <Glass style={styles.roundLg} intensity={30} forceBlur>
                 <Pressable onPress={() => { tap(); isPlaying ? player.pause() : player.play(); arm(); }} style={styles.fillCenter}>
                   <Ionicons name={isPlaying ? 'pause' : 'play'} size={34} color="#fff" style={!isPlaying && { marginLeft: 4 }} />
                 </Pressable>
               </Glass>
-              <IconBtn name="play-back" size={26} style={styles.roundSm} onPress={act(() => player.seekBy(-10))} />
+              <IconBtn name="play-forward" size={26} style={styles.roundSm} onPress={act(() => player.seekBy(10))} />
             </View>
             <View style={[styles.bottomBar, full && { paddingHorizontal: 40, paddingBottom: 26 }]}>
               <Text style={styles.time}>{fmt(currentTime)}</Text>
@@ -365,7 +365,7 @@ function Main() {
             {tab === 'player' && (
               <>
                 <Card title="شغّل من رابط" icon="link">
-                  <Field value={urlInput} onChangeText={setUrlInput} placeholder="https://.../video.mp4 أو .m3u8" keyboardType="url" onSubmitEditing={openUrl} returnKeyType="go" />
+                  <Field value={urlInput} onChangeText={setUrlInput} placeholder="https://example.com/video.mp4" keyboardType="url" onSubmitEditing={openUrl} returnKeyType="go" />
                   <Btn title="شغّل" icon="play" onPress={openUrl} />
                   <Hint>لازم يكون رابط مباشر للفيديو (mp4 أو m3u8)، مو صفحة يوتيوب.</Hint>
                 </Card>
@@ -385,7 +385,7 @@ function Main() {
                     </Text>
                   </View>
                   <Btn title="من ملفات الجوال (srt / vtt)" icon="document-text" kind="ghost" onPress={pickSub} />
-                  <Field value={subUrl} onChangeText={setSubUrl} placeholder="أو رابط مباشر للترجمة https://..." keyboardType="url" />
+                  <Field value={subUrl} onChangeText={setSubUrl} placeholder="https://example.com/subtitle.srt" keyboardType="url" />
                   <Btn title="حمّل من الرابط" icon="cloud-download" onPress={() => {
                     const u = subUrl.trim();
                     if (!/^https?:\/\//i.test(u)) return Alert.alert('الرابط غلط', 'لازم يبدأ بـ https://');
@@ -527,17 +527,17 @@ const styles = StyleSheet.create({
   subText: { color: '#fff', textAlign: 'center', writingDirection: 'rtl', fontWeight: '700', lineHeight: undefined,
     backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8, overflow: 'hidden',
     textShadowColor: '#000', textShadowRadius: 4 },
-  topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', padding: 10, gap: 6 },
-  topTitle: { color: '#fff', fontSize: 14, fontWeight: '600', maxWidth: '55%', ...rtl },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 56, flexDirection: 'row', direction: 'ltr', alignItems: 'center', padding: 10, gap: 6 },
+  topTitle: { color: '#fff', fontSize: 14, fontWeight: '600', flexShrink: 1, maxWidth: '60%', ...rtl },
   livePill: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: 'rgba(48,209,88,0.2)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, marginLeft: 8 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.green, marginLeft: 5 },
   liveTxt: { color: C.green, fontSize: 11, fontWeight: '700' },
   iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 18 },
-  center: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 34 },
+  center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', direction: 'ltr', alignItems: 'center', justifyContent: 'center', gap: 34 },
   roundLg: { width: 68, height: 68, borderRadius: 34, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.25)' },
   roundSm: { width: 46, height: 46, borderRadius: 23 },
   fillCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, gap: 10 },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', direction: 'ltr', alignItems: 'center', paddingHorizontal: 14, paddingBottom: 10, gap: 10 },
   time: { color: '#fff', fontSize: 12, fontVariant: ['tabular-nums'], fontWeight: '600', minWidth: 40, textAlign: 'center' },
   trackHit: { flex: 1, height: 28, justifyContent: 'center' },
   track: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', overflow: 'hidden' },
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
   cardTitle: { color: C.text, fontSize: 17, fontWeight: '700', ...rtl },
   btn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14, marginBottom: 8 },
   btnText: { fontSize: 15, fontWeight: '700' },
-  input: { backgroundColor: 'rgba(255,255,255,0.06)', color: C.text, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 10, fontSize: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.stroke },
+  input: { textAlign: 'left', writingDirection: 'ltr', backgroundColor: 'rgba(255,255,255,0.06)', color: C.text, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 10, fontSize: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.stroke },
   p: { color: C.text, fontSize: 15, lineHeight: 23, marginBottom: 8, ...rtl },
   hint: { color: C.sub, fontSize: 13, lineHeight: 20, marginTop: 4, marginBottom: 8, paddingHorizontal: 4, ...rtl },
   row: { flexDirection: 'row-reverse', gap: 8 },
